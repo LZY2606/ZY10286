@@ -1,0 +1,22 @@
+{
+    "name": "ZLogger.Unity",
+    "rootNamespace": "",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Microsoft.Extensions.Logging.Abstractions.dll",
+        "Microsoft.Extensions.Logging.dll",
+        "Microsoft.Extensions.DependencyInjection.Abstractions.dll",
+        "Microsoft.Extensions.DependencyInjection.dll",
+        "System.Text.Json.dll",
+        "ZLogger.dll",
+        "Microsoft.Bcl.AsyncInterfaces.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

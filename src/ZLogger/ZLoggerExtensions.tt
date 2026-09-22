@@ -1,0 +1,72 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>
+<#
+    var logLevels = new[] { "Trace", "Debug", "Information", "Warning", "Error", "Critical" };
+#>
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
+using ZLogger.LogStates;
+
+namespace ZLogger
+{
+    public static partial class ZLoggerExtensions
+    {
+        public static void ZLog(this ILogger logger, LogLevel logLevel, [InterpolatedStringHandlerArgument("logger", "logLevel")] ref ZLoggerInterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            ZLog(logger, logLevel, default, null, ref message, context, memberName, filePath, lineNumber);
+        }
+        
+        public static void ZLog(this ILogger logger, LogLevel logLevel, EventId eventId, [InterpolatedStringHandlerArgument("logger", "logLevel")] ref ZLoggerInterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            ZLog(logger, logLevel, eventId, null, ref message, context, memberName, filePath, lineNumber);
+        }
+        
+        public static void ZLog(this ILogger logger, LogLevel logLevel, Exception? exception, [InterpolatedStringHandlerArgument("logger", "logLevel")] ref ZLoggerInterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            ZLog(logger, logLevel, default, exception, ref message, context, memberName, filePath, lineNumber);
+        }
+
+        public static void ZLog(this ILogger logger, LogLevel logLevel, EventId eventId, Exception? exception, [InterpolatedStringHandlerArgument("logger", "logLevel")] ref ZLoggerInterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            if (message.IsLoggerEnabled)
+            {
+                var state = message.GetState();
+                state.additionalInfo = (context, memberName, filePath, lineNumber);
+                try
+                {
+                    logger.Log(logLevel, eventId, new VersionedLogState(state), exception, static (state, ex) => state.ToString());
+                }
+                finally
+                {
+                    state.Release();
+                }
+            }
+        }
+<# foreach(var logLevel in logLevels) { #>
+
+        public static void ZLog<#= logLevel #>(this ILogger logger, [InterpolatedStringHandlerArgument("logger")] ref ZLogger<#= logLevel #>InterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            ZLog(logger, LogLevel.<#= logLevel #>, default, null, ref message.InnerHandler, context, memberName, filePath, lineNumber);
+        } 
+
+        public static void ZLog<#= logLevel #>(this ILogger logger, EventId eventId, [InterpolatedStringHandlerArgument("logger")] ref ZLogger<#= logLevel #>InterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            ZLog(logger, LogLevel.<#= logLevel #>, eventId, null, ref message.InnerHandler, context, memberName, filePath, lineNumber);
+        } 
+
+        public static void ZLog<#= logLevel #>(this ILogger logger, Exception? exception, [InterpolatedStringHandlerArgument("logger")] ref ZLogger<#= logLevel #>InterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            ZLog(logger, LogLevel.<#= logLevel #>, default, exception, ref message.InnerHandler, context, memberName, filePath, lineNumber);
+        } 
+
+        public static void ZLog<#= logLevel #>(this ILogger logger, EventId eventId, Exception? exception, [InterpolatedStringHandlerArgument("logger")] ref ZLogger<#= logLevel #>InterpolatedStringHandler message, object? context = null, [CallerMemberName] string? memberName = null, [CallerFilePath] string? filePath = null, [CallerLineNumber] int lineNumber = 0)
+        {
+            ZLog(logger, LogLevel.<#= logLevel #>, eventId, exception, ref message.InnerHandler, context, memberName, filePath, lineNumber);
+        }
+<# } #>
+    }
+}
