@@ -15,6 +15,7 @@ public abstract class BatchingAsyncLogProcessor : IAsyncLogProcessor
     readonly ZLoggerOptions options;
 
     readonly int batchSize;
+    int disposeStarted;
 
     public BatchingAsyncLogProcessor(int batchSize, ZLoggerOptions options)
     {
@@ -32,7 +33,12 @@ public abstract class BatchingAsyncLogProcessor : IAsyncLogProcessor
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Post(IZLoggerEntry log)
     {
-        channel.Writer.TryWrite(log);
+        if (!channel.Writer.TryWrite(log))
+        {
+            // The channel is already completed; the entry is not accepted,
+            // so release it here to keep exactly-once ownership.
+            log.Return();
+        }
     }
 
     protected abstract ValueTask ProcessAsync(IReadOnlyList<INonReturnableZLoggerEntry> list);
@@ -50,7 +56,7 @@ public abstract class BatchingAsyncLogProcessor : IAsyncLogProcessor
                 while (reader.TryRead(out var value))
                 {
                     list.Add(value);
-                    if (batchSize < list.Count)
+                    if (list.Count >= batchSize)
                     {
                         break;
                     }
@@ -82,8 +88,16 @@ public abstract class BatchingAsyncLogProcessor : IAsyncLogProcessor
 
     public async ValueTask DisposeAsync()
     {
-        channel.Writer.Complete();
-        await writeLoop.ConfigureAwait(false);
-        await DisposeAsyncCore().ConfigureAwait(false);
+        if (Interlocked.Exchange(ref disposeStarted, 1) == 0)
+        {
+            channel.Writer.Complete();
+            await writeLoop.ConfigureAwait(false);
+            await DisposeAsyncCore().ConfigureAwait(false);
+        }
+        else
+        {
+            // second dispose: wait for the first one to finish, do nothing else.
+            await writeLoop.ConfigureAwait(false);
+        }
     }
 }

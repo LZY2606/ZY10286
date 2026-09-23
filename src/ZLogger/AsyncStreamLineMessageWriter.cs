@@ -17,6 +17,7 @@ namespace ZLogger
         readonly Channel<IZLoggerEntry> channel;
         readonly Task writeLoop;
         readonly ZLoggerOptions options;
+        int disposeStarted;
 
         public AsyncStreamLineMessageWriter(Stream stream, ZLoggerOptions options)
         {
@@ -59,7 +60,9 @@ namespace ZLogger
                     AllowSynchronousContinuations = false,
                     SingleWriter = false,
                     SingleReader = true,
-                    FullMode = BoundedChannelFullMode.DropWrite,
+                    // Use Wait semantics so TryWrite reports false when full; Post turns
+                    // that into a deterministic drop (release) instead of an invisible one.
+                    FullMode = BoundedChannelFullMode.Wait,
                 }),
                 _ => throw new ArgumentOutOfRangeException()
             };
@@ -71,15 +74,32 @@ namespace ZLogger
         public void Post(IZLoggerEntry log)
         {
             var written = channel.Writer.TryWrite(log);
-            if (!written && options.FullMode == BackgroundBufferFullMode.Block)
+            if (written) return;
+
+            if (options.FullMode == BackgroundBufferFullMode.Block)
             {
                 PostSlow(log);
+                return;
             }
+
+            // Drop mode overflow or already-completed channel: the entry is not
+            // accepted by the channel, so release it here to keep exactly-once ownership.
+            log.Return();
         }
 
         void PostSlow(IZLoggerEntry log)
         {
-            channel.Writer.WriteAsync(log).AsTask().Wait();
+            try
+            {
+                channel.Writer.WriteAsync(log).AsTask().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // The channel was completed while waiting; the entry was never
+                // accepted, so release it here before propagating the error.
+                log.Return();
+                throw;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -150,14 +170,22 @@ namespace ZLogger
 
         public async ValueTask DisposeAsync()
         {
-            try
+            if (Interlocked.Exchange(ref disposeStarted, 1) == 0)
             {
-                channel.Writer.Complete();
-                await writeLoop.ConfigureAwait(false);
+                try
+                {
+                    channel.Writer.Complete();
+                    await writeLoop.ConfigureAwait(false);
+                }
+                finally
+                {
+                    this.stream.Dispose();
+                }
             }
-            finally
+            else
             {
-                this.stream.Dispose();
+                // second dispose: wait for the first one to finish, do nothing else.
+                await writeLoop.ConfigureAwait(false);
             }
         }
     }
